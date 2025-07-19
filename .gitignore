@@ -1,0 +1,7 @@
+__pycache__/
+.ipynb_checkpoints/
+data/raw/
+data/processed/
+.env
+*.zip
+*.tar

@@ -1,0 +1,18 @@
+{
+  "best_model_path_local": "/content/yolo_training/parking_detection_v1/weights/best.pt",
+  "best_model_path_drive": "/content/drive/MyDrive/SmartParkingProject/YOLO_Training/parking_detection_v1/weights/best.pt",
+  "training_config": {
+    "img_size": 640,
+    "batch_size": 16,
+    "epochs": 30,
+    "data_yaml": "/content/CNRPark_YOLO/data.yaml",
+    "weights": "yolov5s.pt",
+    "project": "/content/yolo_training",
+    "name": "parking_detection_v1",
+    "device": "0"
+  },
+  "optimization_applied": true,
+  "train_images": 630,
+  "local_training_dir": "/content/yolo_training/parking_detection_v1",
+  "drive_backup_dir": "/content/drive/MyDrive/SmartParkingProject/YOLO_Training/parking_detection_v1"
+}

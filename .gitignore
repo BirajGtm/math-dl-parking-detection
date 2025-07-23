@@ -5,3 +5,6 @@ data/processed/
 .env
 *.zip
 *.tar
+data
+
+

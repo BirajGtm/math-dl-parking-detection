@@ -1,0 +1,16 @@
+{
+  "test_accuracy": 98.56,
+  "best_val_accuracy": 98.64,
+  "num_epochs_trained": 30,
+  "model_path_local": "/content/cnn_training/best_model.pth",
+  "model_path_drive": "/content/drive/MyDrive/SmartParkingProject/CNN_Training/best_model.pth",
+  "classes": [
+    "free",
+    "occupied"
+  ],
+  "class_to_idx": {
+    "free": 0,
+    "occupied": 1
+  },
+  "total_parameters": 11072642
+}

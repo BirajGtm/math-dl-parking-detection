@@ -7,31 +7,18 @@ import numpy as np
 from PIL import Image as PILImage
 import gradio as gr
 from pathlib import Path
+import os
 
-print("SMART PARKING DEMO APP")
-print("="*40)
-
-# Required files
 REQUIRED_FILES = {
     'yolo_model': './models/yolo-best.pt',
     'cnn_model': './models/cnn-best.pth'
 }
 
-print("Checking required files...")
 for name, path in REQUIRED_FILES.items():
-    exists = Path(path).exists()
-    status = "✓" if exists else "✗"
-    print(f"  {status} {name}: {path}")
+    if not Path(path).exists():
+        print(f"Missing: {path}")
+        exit()
 
-missing_files = [name for name, path in REQUIRED_FILES.items() if not Path(path).exists()]
-
-if missing_files:
-    print(f"❌ Missing files: {missing_files}")
-    exit()
-else:
-    print("✅ All required files found!")
-
-# CNN Architecture
 class ParkingSpotCNN(nn.Module):
     def __init__(self, num_classes=2):
         super(ParkingSpotCNN, self).__init__()
@@ -69,43 +56,24 @@ class ParkingSpotCNN(nn.Module):
         
         return x
 
-# Load models
-print("Loading models...")
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Device: {device}")
 
-# Load YOLO
-print("Loading YOLO model...")
-try:
-    yolo_model = torch.hub.load('ultralytics/yolov5', 'custom', 
-                               path=REQUIRED_FILES['yolo_model'], 
-                               force_reload=True, trust_repo=True)
-    yolo_model.conf = 0.25
-    yolo_model.iou = 0.45
-    print("✓ YOLO model loaded")
-except Exception as e:
-    print(f"✗ YOLO loading failed: {e}")
-    yolo_model = None
+yolo_model = torch.hub.load('ultralytics/yolov5', 'custom', 
+                           path=REQUIRED_FILES['yolo_model'], 
+                           force_reload=True, trust_repo=True)
+yolo_model.conf = 0.25
+yolo_model.iou = 0.45
 
-# Load CNN
-print("Loading CNN model...")
-try:
-    cnn_model = ParkingSpotCNN(num_classes=2).to(device)
-    cnn_model.load_state_dict(torch.load(REQUIRED_FILES['cnn_model'], map_location=device))
-    cnn_model.eval()
-    print("✓ CNN model loaded")
-except Exception as e:
-    print(f"✗ CNN loading failed: {e}")
-    cnn_model = None
+cnn_model = ParkingSpotCNN(num_classes=2).to(device)
+cnn_model.load_state_dict(torch.load(REQUIRED_FILES['cnn_model'], map_location=device))
+cnn_model.eval()
 
-# CNN preprocessing
 cnn_transform = transforms.Compose([
     transforms.Resize((150, 150)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-# Smart Parking Detector
 class SmartParkingDetector:
     def __init__(self, yolo_model, cnn_model, cnn_transform, device):
         self.yolo_model = yolo_model
@@ -115,9 +83,6 @@ class SmartParkingDetector:
         self.class_names = ['free', 'occupied']
         
     def detect_parking_spaces(self, image):
-        if self.yolo_model is None:
-            return []
-            
         results = self.yolo_model(image)
         detections = []
         
@@ -132,9 +97,6 @@ class SmartParkingDetector:
         return detections
     
     def classify_occupancy(self, image, bbox):
-        if self.cnn_model is None:
-            return 'unknown', 0.0
-            
         x1, y1, x2, y2 = bbox
         patch = image[y1:y2, x1:x2]
         
@@ -173,8 +135,7 @@ class SmartParkingDetector:
                 'bbox': detection['bbox'],
                 'yolo_confidence': detection['confidence'],
                 'occupancy': occupancy,
-                'occupancy_confidence': confidence,
-                'combined_confidence': detection['confidence'] * confidence
+                'occupancy_confidence': confidence
             }
             results.append(result)
         
@@ -182,7 +143,6 @@ class SmartParkingDetector:
     
     def visualize_results(self, image, results):
         vis_image = image.copy()
-        
         free_count = 0
         occupied_count = 0
         
@@ -202,19 +162,12 @@ class SmartParkingDetector:
             cv2.rectangle(vis_image, (x1, y1), (x2, y2), color, 3)
             
             label = f"{occupancy.upper()}"
-            label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-            
-            cv2.rectangle(vis_image, (x1, y1 - label_size[1] - 10), 
-                         (x1 + label_size[0], y1), color, -1)
-            
-            cv2.putText(vis_image, label, (x1, y1 - 5), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(vis_image, label, (x1, y1 - 10), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
         
         total_spots = len(results)
         summary = f"TOTAL: {total_spots} | FREE: {free_count} | OCCUPIED: {occupied_count}"
         
-        cv2.putText(vis_image, summary, (10, 40), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 4)
         cv2.putText(vis_image, summary, (10, 40), 
                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
         
@@ -225,24 +178,14 @@ class SmartParkingDetector:
             'occupancy_rate': (occupied_count / total_spots * 100) if total_spots > 0 else 0
         }
 
-# Initialize detector
-if yolo_model is not None and cnn_model is not None:
-    detector = SmartParkingDetector(yolo_model, cnn_model, cnn_transform, device)
-    print("✅ Smart Parking Detector initialized!")
-else:
-    print("❌ Cannot initialize detector - models not loaded properly")
-    detector = None
+detector = SmartParkingDetector(yolo_model, cnn_model, cnn_transform, device)
 
-# Gradio processing function
 def process_uploaded_image(image):
-    if detector is None:
-        return None, "❌ Models not loaded properly"
-    
     try:
         results, _ = detector.process_image(image)
         
         if results is None:
-            return None, "❌ Failed to process image"
+            return None, "Failed to process image"
         
         image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         vis_image, stats = detector.visualize_results(image_cv, results)
@@ -250,7 +193,7 @@ def process_uploaded_image(image):
         vis_image_rgb = cv2.cvtColor(vis_image, cv2.COLOR_BGR2RGB)
         vis_image_pil = PILImage.fromarray(vis_image_rgb)
         
-        report = f"""SMART PARKING ANALYSIS
+        report = f"""PARKING ANALYSIS
 
 SUMMARY:
 • Total Spaces: {stats['total']}
@@ -267,7 +210,7 @@ DETAILS:
             occ_conf = result['occupancy_confidence']
             
             status = "FREE" if occupancy == 'free' else "OCCUPIED"
-            report += f"• Space {i+1}: {status} (YOLO: {yolo_conf:.2f}, CNN: {occ_conf:.2f})\n"
+            report += f"• Space {i+1}: {status} ({yolo_conf:.2f}, {occ_conf:.2f})\n"
         
         if len(results) > 10:
             report += f"... and {len(results) - 10} more spaces\n"
@@ -275,37 +218,27 @@ DETAILS:
         return vis_image_pil, report
         
     except Exception as e:
-        return None, f"❌ Error: {str(e)}"
+        return None, f"Error: {str(e)}"
 
-# Create Gradio app
 def create_app():
     with gr.Blocks(title="Smart Parking Detector") as app:
         
         gr.HTML("""
         <div style="text-align: center; background: linear-gradient(90deg, #4CAF50, #2196F3); 
                     color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-            <h1>Smart Parking Space Detector</h1>
-            <p>Upload a parking lot image to detect and analyze parking space occupancy</p>
+            <h1>Smart Parking Detector</h1>
+            <p>Upload parking lot image for analysis</p>
         </div>
         """)
         
         with gr.Row():
             with gr.Column():
-                gr.Markdown("### Upload Image")
                 input_image = gr.Image(type="pil", label="Parking Lot Image")
-                process_btn = gr.Button("Analyze Parking Spaces", variant="primary")
+                process_btn = gr.Button("Analyze", variant="primary")
                 
             with gr.Column():
-                gr.Markdown("### Results")
-                output_image = gr.Image(label="Detected Parking Spaces")
-                output_report = gr.Textbox(label="Analysis Report", lines=15)
-        
-        gr.Markdown("""
-        ### Instructions:
-        1. Upload a parking lot image
-        2. Click "Analyze Parking Spaces"  
-        3. View results: Green = Free, Red = Occupied
-        """)
+                output_image = gr.Image(label="Results")
+                output_report = gr.Textbox(label="Report", lines=15)
         
         process_btn.click(
             fn=process_uploaded_image,
@@ -315,12 +248,11 @@ def create_app():
     
     return app
 
-# Launch app
-if detector is not None:
-    print("🚀 Launching web application...")
-    app = create_app()
-    app.launch(share=False, server_name="127.0.0.1", server_port=10000)
-else:
-    print("❌ Cannot launch app - detector not initialized")
+app = create_app()
 
-print("✅ DEMO APP COMPLETE!")
+app.launch(
+    server_name="0.0.0.0",
+    server_port=int(os.environ.get("PORT", 10000)),
+    share=False,
+    quiet=True
+)
